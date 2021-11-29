@@ -1,0 +1,17 @@
+{
+  "name": "jin-lsp-fuse",
+  "version": "1.0.0",
+  "description": "Liquid staked Fuse protocol by JinFinance.com",
+  "main": "",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "JinFinance.com",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^3.4.1"
+  }
+}
