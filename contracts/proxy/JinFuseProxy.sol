@@ -1,42 +1,23 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity ^0.6.0;
 
+import "./JinFuseStorage.sol";
+
 /**
- * @title EternalStorageProxy
+ * @title JinFuseProxy
  * @author JinFinance
- * @dev This proxy holds the storage of the token contract and delegates every call to the current implementation set.
+ * @dev This proxy holds the storage contract and delegates every call to the current implementation set.
  * Besides, it allows to upgrade the token's behaviour towards further implementations, and provides authorization control functionalities
  */
-contract EternalStorageProxy {
-
-    /**
-     * @dev Storage slot with the address of the current implementation.
-     * This is the keccak-256 hash of "eip1967.proxy.implementation" subtracted by 1
-     */
-    bytes32 internal constant _IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
-
-    // Storage mappings
-    mapping(bytes32 => uint256) internal uintStorage;
-    mapping(bytes32 => string) internal stringStorage;
-    mapping(bytes32 => address) internal addressStorage;
-    mapping(bytes32 => bytes) internal bytesStorage;
-    mapping(bytes32 => bool) internal boolStorage;
-    mapping(bytes32 => bytes32) internal bytes32Storage;
-
-    mapping(bytes32 => uint256[]) internal uintArrayStorage;
-    mapping(bytes32 => string[]) internal stringArrayStorage;
-    mapping(bytes32 => address[]) internal addressArrayStorage;
-    mapping(bytes32 => bytes[]) internal bytesArrayStorage;
-    mapping(bytes32 => bool[]) internal boolArrayStorage;
-    mapping(bytes32 => bytes32[]) internal bytes32ArrayStorage;
-
+contract JinFuseProxy is JinFuseStorage {
 
     /**
     * @dev This event will be emitted every time the implementation gets upgraded
     * @param version representing the version number of the upgraded implementation
     * @param implementation representing the address of the upgraded implementation
     */
-    event Upgraded(uint256 version, address indexed implementation);
+    event Upgraded(bytes32 version, address indexed implementation);
 
     /**
     * @dev This event will be emitted when ownership is transferred
@@ -72,32 +53,33 @@ contract EternalStorageProxy {
       _setPendingPeriod(_pendingPeriod);
       _setOwner(msg.sender);
     }
+    
 
     /**
-    * @dev Fallback function allowing to perform a delegatecall to the given implementation.
+    * @dev Fallback function allowing to perform a delegatecall to the given _implementation().
     * This function will return whatever the implementation call returns
     */
-    function() payable public {
+    fallback() external payable {
       address _impl = _implementation();
       require(_impl != address(0));
 
       assembly {
         // Copy msg.data. We take full control of memory in this inline assembly
         // block because it will not return to Solidity code. We overwrite the
-        // Solidity scratch pad at memory position 0
-        calldatacopy(0, 0, calldatasize)
+        // Solidity scratch pad at memory position 0.
+        calldatacopy(0, 0, calldatasize())
 
         // Call the implementation.
         // out and outsize are 0 because we don't know the size yet
-        let result := delegatecall(gas, _impl, 0, calldatasize, 0, 0)
+        let result := delegatecall(gas(), _impl, 0, calldatasize(), 0, 0)
 
         // Copy the returned data
-        returndatacopy(0, 0, returndatasize)
+        returndatacopy(0, 0, returndatasize())
 
         switch result
-        // delegatecall returns 0 on error
-        case 0 { revert(0, returndatasize) }
-        default { return(0, returndatasize) }
+        // delegatecall returns 0 on error.
+        case 0 { revert(0, returndatasize()) }
+        default { return(0, returndatasize()) }
       }
     }
 
@@ -118,7 +100,7 @@ contract EternalStorageProxy {
       _setImplementationTimeLock(0);  //resets timelock to 0 signaling no new implementation is pending
       _setVersion(_newImplementation);
 
-      emit Upgraded(_newVersion, _newImplementation);
+      emit Upgraded(version(), _newImplementation);
     }
 
     /**
@@ -163,10 +145,6 @@ contract EternalStorageProxy {
       return _implementation();
     }
 
-    function isInitialized() public view returns(bool) {
-      return boolStorage[keccak256(abi.encodePacked("isInitialized"))];
-    }
-
     /**
      * @dev Returns the current pending implementation
      */
@@ -192,23 +170,18 @@ contract EternalStorageProxy {
       return addressStorage[keccak256(abi.encodePacked("owner"))];
     }
     
-    function version() public view returns(uint256) {
+    function version() public view returns(bytes32) {
       return bytes32Storage[keccak256(abi.encodePacked("jlsfp.proxy.version"))];
-    }
-
-
-    function setInitialized(bool _status) internal {
-      boolStorage[keccak256(abi.encodePacked("isInitialized"))] = _status;
     }
 
     /**
      * @dev Sets the pending implementation contract to be upgraded to
      */
-    function _setPendingImplementation(address _implementation) internal {
-      require(_implementation != address(0));
-      require(_implementation != _implementation());
+    function _setPendingImplementation(address _impl) internal {
+      require(_impl != address(0));
+      require(_impl != _implementation());
 
-      addressStorage[keccak256(abi.encodePacked("jlsfp.proxy.pendingImpl"))] = _implementation;
+      addressStorage[keccak256(abi.encodePacked("jlsfp.proxy.pendingImpl"))] = _impl;
     }
 
     /**
@@ -224,13 +197,6 @@ contract EternalStorageProxy {
      */
     function _setImplementationTimeLock(uint256 _time) internal {
       uintStorage[keccak256(abi.encodePacked("jlsfp.proxy.timeLock"))] = _time;
-    }
-
-    /**
-     *@dev Returns the current implementation contract
-     */
-    function _implementation() internal view returns(address) {
-      return addressStorage[_IMPLEMENTATION_SLOT];
     }
 
     function _setOwner(address _owner) private {
