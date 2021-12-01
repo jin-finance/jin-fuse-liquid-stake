@@ -522,7 +522,7 @@ contract JinFuseStakingPool is JinFuseStorage {
 
         //Redistribute staking pool's delegation in the removed validator
         uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), replacedValidator); 
-        _setValidatorIndex(i);
+        _setValidatorIndex(_index);
 
         if(withdrawableAmount > 0) {
             IConsensus(consensus()).withdraw(replacedValidator, withdrawableAmount);
@@ -730,8 +730,8 @@ contract JinFuseStakingPool is JinFuseStorage {
     */
     function _deposit() internal {
 
-        uint256 deposit = msg.value;
-        require(deposit != 0, "ZERO_DEPOSIT");
+        uint256 depositAmount = msg.value;
+        require(depositAmount != 0, "ZERO_DEPOSIT");
 
         if(systemTotalStaked() != 0) {
             _priorChecks();
@@ -819,8 +819,8 @@ contract JinFuseStakingPool is JinFuseStorage {
             address payable consensusContract = payable(consensus());
             IConsensus(consensusContract).delegate{value: _amount}(currentValidator);  
         } else {
+            address payable consensusContract = payable(consensus());
             if(availableAmount > 0) {
-                address payable consensusContract = payable(consensus());
                 IConsensus(consensusContract).delegate{value: availableAmount}(currentValidator); 
             }
 

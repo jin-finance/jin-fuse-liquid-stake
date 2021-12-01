@@ -53,7 +53,8 @@ module.exports = {
     fuse: {
       network_id: 122,
       // gas: 10000000,
-      gasPrice: 1000000000 // 1 gwei
+      gasPrice: 1000000000, // 1 gwei
+      provider: walletProvider
     },
     spark: {
       network_id: 123,
