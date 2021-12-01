@@ -181,7 +181,7 @@ contract JinFuseStakingPool is JinFuseStorage {
      */
     modifier nonReentrant() {
 
-        require(uintStorage[REENTRANCY_GUARD] != 2, "ReentrancyGuard: reentrant call");
+        require(uintStorage[REENTRANCY_GUARD] != 2, "REENTRANCYGUARD: reentrant call");
 
         uintStorage[REENTRANCY_GUARD] = 2;
 
@@ -312,7 +312,7 @@ contract JinFuseStakingPool is JinFuseStorage {
     * @param _amount the amount of tokens to be exchanged which represents the user's share of the staking pool
     */
     function withdraw(uint256 _amount) external nonReentrant {
-
+        require(_amount > 0);
         IERC20(getSFToken()).transferFrom(msg.sender, address(this), _amount);
 
         _update();
@@ -360,13 +360,15 @@ contract JinFuseStakingPool is JinFuseStorage {
     */
     function withdraw(uint256 _amount, uint256 _validatorPosition) external nonReentrant {
         require(!isPaused(), "Currently paused");
+        require(_amount > 0);
+        require(_validatorPosition < getValidatorsLength(), "VALIDATOR: does not exist");
         
         IERC20(getSFToken()).transferFrom(msg.sender, address(this), _amount);
 
         _update();
         
         uint256 payout = _amount.mul(priceRatio()).div(1e18);
-        address selectedValidator = _getValidatorAt(_validatorPosition);
+        address selectedValidator = getValidatorAt(_validatorPosition);
         uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), selectedValidator); 
         
         require(payout <= withdrawableAmount);
@@ -424,7 +426,7 @@ contract JinFuseStakingPool is JinFuseStorage {
     * @param _newValidator address of the validator to be added 
     */
     function addValidator(address _newValidator) external onlyOwner {
-        require(!isInValidatorList(_newValidator), "Already in list");
+        require(!isInValidatorList(_newValidator), "ALREADY_IN_LIST");
         _addValidator(_newValidator);
 
         emit AddedValidator(msg.sender, _newValidator);
@@ -435,8 +437,8 @@ contract JinFuseStakingPool is JinFuseStorage {
     * @param _validator address of the validator to be removed 
     */ 
     function removeValidator(address _validator) external onlyOwner {
-        require(isInValidatorList(_validator), "_Validator: not an existing validator");
-        require(getValidatorsLength() > 1, "Existing list must be greater than 1");
+        require(isInValidatorList(_validator), "VALIDATOR: not an existing validator");
+        require(getValidatorsLength() > 1, "EXISTING_LIST: must be greater than 1");
 
         address[] storage validatorList = addressArrayStorage[VALIDATORS];
 
@@ -449,10 +451,15 @@ contract JinFuseStakingPool is JinFuseStorage {
                 //_setValidatorList(validatorList);                        
 
                 //Redistribute staking pool's delegation in the removed validator
-                uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), _validator); 
-                IConsensus(consensus()).withdraw(_validator, withdrawableAmount);
-                _validatorStakeRedistribution(withdrawableAmount);
+                uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), _validator);
 
+                _setValidatorIndex(0); 
+
+                if(withdrawableAmount > 0) {
+                    IConsensus(consensus()).withdraw(_validator, withdrawableAmount);
+                    _validatorStakeRedistribution(withdrawableAmount);
+                }
+                
                 emit RemovedValidator(_validator, msg.sender);
 
                 break;
@@ -467,8 +474,8 @@ contract JinFuseStakingPool is JinFuseStorage {
     */
     function replaceValidator(address _validator, address _replacement) external onlyOwner {
         require(_replacement != address(0));
-        require(isInValidatorList(_validator), "_Validator: not an existing validator");
-        require(!isInValidatorList(_replacement), "Replacement: already on list");
+        require(isInValidatorList(_validator), "VALIDATOR: not an existing validator");
+        require(!isInValidatorList(_replacement), "REPLACEMENT: already on list");
 
         address[] memory validatorList = getValidators();
 
@@ -481,11 +488,13 @@ contract JinFuseStakingPool is JinFuseStorage {
 
                 //Redistribute staking pool's delegation in the removed validator
                 uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), _validator); 
-                IConsensus(consensus()).withdraw(_validator, withdrawableAmount);
-            
                 _setValidatorIndex(i);
 
-                _validatorStakeRedistribution(withdrawableAmount);
+                if(withdrawableAmount > 0) {
+                    IConsensus(consensus()).withdraw(_validator, withdrawableAmount);
+                    _validatorStakeRedistribution(withdrawableAmount);
+                }
+                
 
                 emit ReplacedValidator(_replacement, _validator);
 
@@ -503,17 +512,22 @@ contract JinFuseStakingPool is JinFuseStorage {
     */
     function replaceValidatorByIndex(uint256 _index, address _replacement) external onlyOwner {
         require(_replacement != address(0));
-        require(_index < getValidatorsLength(), "Does not exist: over list size");
-        require(!isInValidatorList(_replacement), "Replacement: already on list");
+        require(_index < getValidatorsLength(), "DOES_NOT_EXIST: over list size");
+        require(!isInValidatorList(_replacement), "REPLACEMENT: already on list");
 
         address[] memory validatorList = getValidators();
         address replacedValidator = validatorList[_index];
         validatorList[_index] = _replacement;
         _setValidatorList(validatorList);
 
+        //Redistribute staking pool's delegation in the removed validator
         uint256 withdrawableAmount = IConsensus(consensus()).delegatedAmount(address(this), replacedValidator); 
-        IConsensus(consensus()).withdraw(replacedValidator, withdrawableAmount);
-        _validatorStakeRedistribution(withdrawableAmount);
+        _setValidatorIndex(i);
+
+        if(withdrawableAmount > 0) {
+            IConsensus(consensus()).withdraw(replacedValidator, withdrawableAmount);
+            _validatorStakeRedistribution(withdrawableAmount);
+        }
 
         emit ReplacedValidator(_replacement, replacedValidator);
 
@@ -716,6 +730,9 @@ contract JinFuseStakingPool is JinFuseStorage {
     */
     function _deposit() internal {
 
+        uint256 deposit = msg.value;
+        require(deposit != 0, "ZERO_DEPOSIT");
+
         if(systemTotalStaked() != 0) {
             _priorChecks();
             _update();
@@ -802,9 +819,11 @@ contract JinFuseStakingPool is JinFuseStorage {
             address payable consensusContract = payable(consensus());
             IConsensus(consensusContract).delegate{value: _amount}(currentValidator);  
         } else {
-            address payable consensusContract = payable(consensus());
-            IConsensus(consensusContract).delegate{value: availableAmount}(currentValidator);  
-            
+            if(availableAmount > 0) {
+                address payable consensusContract = payable(consensus());
+                IConsensus(consensusContract).delegate{value: availableAmount}(currentValidator); 
+            }
+
             uint256 remaining = _amount.sub(availableAmount);
 
             address[] memory validatorList = getValidators();
@@ -971,7 +990,7 @@ contract JinFuseStakingPool is JinFuseStorage {
     * @dev Gets the validator address at a certain position
     * @param _position the index value to look up
     */
-    function _getValidatorAt(uint256 _position) internal view returns(address) {
+    function getValidatorAt(uint256 _position) public view returns(address) {
         address[] memory list = getValidators();
 
         return list[_position];
